@@ -1,0 +1,153 @@
+@page  "/"
+@using ApplicationWeb.Features.Admin.Commands;
+@using Modelo.Admin;
+@using Modelo.Entidades
+@using Modelo.Interfaces
+@using Newtonsoft.Json
+@using BsOperaciones.Services
+@using System.Security.Claims
+@using System.Text.RegularExpressions
+@using System.Security.Cryptography
+@using Utilidades.Interfaces
+@inject AuthenticationStateProvider AuthenticationStateProvider
+@inject NavigationManager NavigationManager
+@inject Blazored.LocalStorage.ILocalStorageService localStorageService
+@inject IMediator _mediator;
+@inject IJSRuntime jsRunTime
+@inject IUtilidades _Util;
+@inject IUserInfo _Iuser;
+
+
+<EditForm Model="@user">
+    <section class="h-100 gradient-form" style="background-color: #eee;">
+        <div class="container py-5 h-100">
+            <div class="row d-flex justify-content-center align-items-center h-100">
+                <div class="col-xl-4">
+                    <div class="card rounded-3 text-black">
+                        <div class="row g-0">
+                            <div class="col-lg-12">
+                                <div class="card-body p-md-3 mx-md-4">
+                                    <div class="text-center">               
+                                        <img src="/img/brand/logo.png" style="width: 200px; height:250px;" alt="logo" />
+                                        <h4 class="mt-1 mb-2 pb-1">Nosotras somos BUSSERSA</h4>
+                                    </div>
+                                    <form>
+                                        <p>Por favor, ingrese a sus credenciales</p>
+                                        <div class="form-outline mb-4 col-md-6 col-lg-12">
+                                            <input type="email" id="form2Example11" class="form-control" @bind="user.Email_Address" placeholder="email address" />
+                                        </div>
+
+                                        <div class="form-outline mb-4 col-md-6 col-lg-12">
+                                            <input type="password" id="form2Example22" class="form-control" @bind="user.Password" placeholder="Clave" />
+                                        </div>
+
+                                        <div class="text-center pt-1 mb-4 pb-2 col-md-6 col-lg-12">
+                                            <RadzenButton Click="@ValidateUser" ButtonStyle="ButtonStyle.Primary" class="form-control col-6"><i class="nav-icon fa fa-lock"></i>Login</RadzenButton>
+                                            @*<input type="submit" class="form-control col-6 btn btn-primary" value="Login" />*@
+                                        </div>                                       
+                                        <div class="col-12 row" style="text-align:left; font-weight:bold">
+                                            <span class="col-12">@LoginMesssage</span>
+                                        </div>
+                                        <br />
+                                    </form>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </section>
+</EditForm>
+
+@code {
+
+    private UserLogin user;
+    public string LoginMesssage { get; set; }
+    ClaimsPrincipal claimsPrincipal;
+
+    [CascadingParameter]
+    private Task<AuthenticationState> authenticationStateTask { get; set; }
+
+    protected async override Task OnInitializedAsync()
+    {
+        user = new UserLogin();
+
+        claimsPrincipal = (await authenticationStateTask).User;
+
+        if (claimsPrincipal.Identity.IsAuthenticated)
+        {
+            NavigationManager.NavigateTo("/index");
+        }
+        {
+            user.Email_Address = "operaciones@bussersa.com";
+            user.Password = "root765*";
+        }
+
+    }
+
+    private async Task<bool> ValidateUser()
+    {
+        LoginMesssage = ResigstrationValidations(user);
+        if (!string.IsNullOrEmpty(LoginMesssage))
+        {
+            return await Task.FromResult(true);
+        }
+
+        user.Password = _Util.Encrypt(user.Password);
+        var response = await _mediator.Send(new AddLoginUserCommand(user));
+
+        if (response.Model.email != null)
+        {
+            await ((CustomAuthenticationStateProvider)AuthenticationStateProvider).MarkUserAsAuthenticated(response.Model);
+            _Iuser.SetUserInfo(new User());
+            _Iuser.SetMenu(0);
+            _Iuser.SetPermisos(new Menus());
+            _Iuser.SetUserInfo(response.Model);
+            NavigationManager.NavigateTo("/index");
+        }
+        else
+        {
+            LoginMesssage = "Invalid username or password";
+        }
+
+
+        return await Task.FromResult(true);
+    }
+
+    private string ResigstrationValidations(UserLogin registerVm)
+    {
+        if (string.IsNullOrEmpty(registerVm.Email_Address))
+        {
+            return "Eamil can't be empty";
+        }
+
+        string emailRules = @"[a-z0-9!#$%&'*+/=?^_`{|}~-]+(?:\.[a-z0-9!#$%&'*+/=?^_`{|}~-]+)*@(?:[a-z0-9](?:[a-z0-9-]*[a-z0-9])?\.)+[a-z0-9](?:[a-z0-9-]*[a-z0-9])?";
+        if (!Regex.IsMatch(registerVm.Email_Address, emailRules))
+        {
+            return "Not a valid email";
+        }     
+
+        if ((string.IsNullOrEmpty(registerVm.Password) || string.IsNullOrEmpty(registerVm.ConfirmPassword) ) && registerVm.Validate) 
+        {
+            return "Password Or ConfirmPasswor Can't be empty";
+        }
+
+        if ((registerVm.Password != registerVm.ConfirmPassword) && registerVm.Validate)
+        {
+            return "Invalid confirm password";
+        }
+
+        // atleast one lower case letter
+        // atleast one upper case letter
+        // atleast one special character
+        // atleast one number
+        // atleast 8 character length
+        string passwordRules = @"^.*(?=.{8,})(?=.*\d)(?=.*[a-z])(?=.*[A-Z])(?=.*[!*@#$%^&+=]).*$";
+        if (!Regex.IsMatch(registerVm.Password, passwordRules) && registerVm.Validate)
+        {
+            return "Not a valid password";
+        }
+        return string.Empty;
+    }
+}
